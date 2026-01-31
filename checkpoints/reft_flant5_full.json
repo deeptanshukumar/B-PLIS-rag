@@ -1,0 +1,11 @@
+{
+  "model": "google/flan-t5-base",
+  "intervention_dim": 16,
+  "target_layer": 6,
+  "learning_rate": 0.01,
+  "num_steps": 50,
+  "epochs": 2,
+  "num_examples": 753,
+  "final_loss": 0.21456008635035867,
+  "z_norm": 1.2242902517318726
+}

@@ -1,0 +1,56 @@
+MIT License
+
+Copyright (c) 2026 B-PLIS Team
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+DISCLAIMER: This software is provided for research and educational purposes only.
+It is NOT intended to provide legal advice. Always consult with a qualified legal
+professional for legal matters. The authors and contributors are not responsible
+for any decisions made based on the outputs of this system.
+
+---
+
+Third-Party Licenses and Acknowledgments:
+
+This project uses the following open-source components:
+
+1. LegalBench-RAG Dataset
+   - Repository: https://github.com/zeroentropy-ai/legalbenchrag
+   - License: Please refer to the original repository for licensing terms
+   - Citation: See README.md
+
+2. Hugging Face Transformers
+   - License: Apache 2.0
+   - https://github.com/huggingface/transformers
+
+3. FAISS (Facebook AI Similarity Search)
+   - License: MIT
+   - https://github.com/facebookresearch/faiss
+
+4. Sentence-Transformers
+   - License: Apache 2.0
+   - https://github.com/UKPLab/sentence-transformers
+
+Research Papers Referenced:
+- ReFT: Representation Fine-Tuning for Language Models
+- ContextFocus (arXiv:2601.04131)
+- GRACE (arXiv:2211.11031)
