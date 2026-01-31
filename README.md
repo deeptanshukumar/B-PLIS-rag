@@ -4,9 +4,17 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
-A production-ready Retrieval-Augmented Generation (RAG) system for legal documents, implementing **ReFT (Representation Fine-Tuning)** and **Activation Steering** for improved answer accuracy and faithfulness.
+A production-ready Retrieval-Augmented Generation (RAG) system for legal documents, implementing **Activation Steering** and **ReFT (Representation Fine-Tuning)** for improved answer accuracy and faithfulness.
 
-** Now with fully trained model achieving high-quality natural language answers!**
+## 🔬 Core Research Contribution
+
+**Context Injection via Activation Steering**: This project's main innovation is steering model activations at intermediate decoder layers to bias generation toward retrieved context rather than parametric knowledge. By computing and applying steering vectors during generation, we ensure the model prioritizes the provided legal document context over memorized information.
+
+**✨ Key Features:**
+- 📊 **Activation Steering** - Inject context preference into decoder hidden states
+- 🎯 **ReFT Intervention** - Low-rank intervention for faithful generation (12K parameters)
+- 🔍 **Semantic Retrieval** - FAISS-based search across 691 legal documents
+- 💬 **Natural Language Answers** - Instruction-tuned Flan-T5 for contextual responses
 
 ##  What This Does
 
@@ -56,7 +64,19 @@ This downloads:
 - 691 legal documents (95 NDAs, 462 CUAD contracts, 134 MAUD agreements)
 - 6,889 benchmark question-answer pairs
 
-### 3. Run Queries
+### 3. Compute Steering Vector (Required for Steering)
+
+```bash
+# Compute steering vector from 200 examples (~5-10 minutes on GPU)
+python scripts/compute_steering.py --num-examples 200
+
+# Or use more examples for better quality
+python scripts/compute_steering.py --num-examples 500
+```
+
+This creates `checkpoints/steering_vector.pt` which will auto-load during queries.
+
+### 4. Run Queries
 
 ```bash
 # Simple query
@@ -69,23 +89,29 @@ python main.py --interactive
 python main.py --query "What are termination clauses?" --corpus all --top-k 5
 ```
 
-##  Pre-trained Model
+## 📊 Pre-trained Models
 
-The repository includes a **fully trained ReFT checkpoint**:
+The repository includes **fully trained interventions**:
+
+### ReFT Intervention
 - **Model**: `google/flan-t5-base` (248M parameters)
 - **Training**: 753 examples over 2 epochs (~100 minutes on GPU)
 - **Loss**: 0.2146 (final)
 - **Location**: `checkpoints/reft_flant5_full.pt`
+- **Auto-loads** when you run queries
 
-The model automatically loads this checkpoint when you run queries.
+### Activation Steering Vector
+- **Computation**: Required before first use (run once)
+- **Purpose**: Steers decoder to prioritize retrieved context
+- **Command**: `python scripts/compute_steering.py --num-examples 200`
+- **Location**: `checkpoints/steering_vector.pt`
+- **Usage**: Auto-loads if present, applies during generation
 
-# This will:
-# - Clone the LegalBench-RAG repository
-# - Extract corpus files to data/corpus/
-# - Process benchmarks to data/benchmarks/
-```
+**⚠ Important**: Steering vector must be computed once before steering works!
 
-### 4. Run RAG Pipeline
+## 🚀 Quick Start
+
+### 1. Installation
 
 ```bash
 # Quick query
@@ -174,6 +200,26 @@ print(f"Answer: {response.answer}")
 print(f"Sources: {response.sources}")
 ```
 
+### Computing Your Own Steering Vector
+
+```bash
+# Compute from 200 examples (~5-10 min on GPU)
+python scripts/compute_steering.py \
+    --model google/flan-t5-base \
+    --num-examples 200 \
+    --layer 6 \
+    --output checkpoints/steering_vector.pt
+
+# Use specific corpus
+python scripts/compute_steering.py \
+    --corpus contractnli cuad \
+    --num-examples 300 \
+    --output checkpoints/steering_contract.pt
+
+# Load custom steering
+python main.py --query "..." --steering-checkpoint checkpoints/steering_contract.pt
+```
+
 ### Training Your Own ReFT Model
 
 ```bash
@@ -204,15 +250,29 @@ python scripts/train_reft.py \
 - Finds top-k relevant documents via semantic search
 - Extracts relevant snippets (up to 1000 characters)
 
-### 2. **Generation (Flan-T5 + ReFT)**
+### 2. **Generation (Flan-T5 + Interventions)**
 - Uses instruction-tuned `google/flan-t5-base` (248M params)
-- Applies learned ReFT intervention at decoder layer 6
+- **Applies activation steering at decoder layer 6** (MAIN INNOVATION)
+- Applies learned ReFT intervention for additional faithfulness
 - Generates answer conditioned on retrieved context
 
-### 3. **ReFT Intervention**
+### 3. **Activation Steering (Core Research)**
+**Problem**: Models often ignore retrieved context, relying on parametric knowledge.
+
+**Solution**: Inject context preference directly into decoder activations.
+
+**Method**:
+1. Compute steering vector: `s = mean(activations_with_context) - mean(activations_without_context)`
+2. During generation: `hidden_states = hidden_states + multiplier * s`
+3. This biases the model toward using provided context
+
+**Impact**: Model generates from context rather than memorized knowledge.
+
+### 4. **ReFT Intervention (Complementary)**
 - Low-rank (16-dim) intervention with only 12,304 parameters
 - Trains to prioritize retrieved context over memorized knowledge
 - 99.995% of model weights stay frozen
+- Works synergistically with activation steering
 
 ##  Performance
 

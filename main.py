@@ -137,6 +137,12 @@ Examples:
         help="Path to trained ReFT checkpoint (default: checkpoints/reft_latest.pt)",
     )
     
+    parser.add_argument(
+        "--steering-checkpoint",
+        type=str,
+        help="Path to steering vector checkpoint (default: checkpoints/steering_vector.pt)",
+    )
+    
     # Output options
     parser.add_argument(
         "--output", "-o",
@@ -185,12 +191,32 @@ def create_pipeline(args: argparse.Namespace) -> RAGPipeline:
             logger.warning(f"Checkpoint not found: {checkpoint_path}")
     elif pipeline.use_reft and not args.checkpoint:
         # Try loading default checkpoint if it exists
-        default_checkpoint = Path("checkpoints/reft_latest.pt")
+        default_checkpoint = Path("checkpoints/reft_flant5_full.pt")
         if default_checkpoint.exists():
-            logger.info(f"Loading default ReFT checkpoint from {default_checkpoint}")
+            logger.info(f"✓ Loading default ReFT checkpoint from {default_checkpoint}")
             pipeline.load_reft_checkpoint(default_checkpoint)
         else:
-            logger.info("No checkpoint loaded - using untrained ReFT intervention")
+            logger.info("No ReFT checkpoint found - using untrained intervention")
+    
+    # Load steering vector checkpoint if provided
+    if args.steering_checkpoint and pipeline.use_steering:
+        steering_path = Path(args.steering_checkpoint)
+        if steering_path.exists():
+            logger.info(f"Loading steering vector from {steering_path}")
+            pipeline.load_steering_vector(str(steering_path))
+        else:
+            logger.warning(f"Steering checkpoint not found: {steering_path}")
+    elif pipeline.use_steering and not args.steering_checkpoint:
+        # Try loading default steering checkpoint
+        default_steering = Path("checkpoints/steering_vector.pt")
+        if default_steering.exists():
+            logger.info(f"✓ Loading default steering vector from {default_steering}")
+            pipeline.load_steering_vector(str(default_steering))
+        else:
+            logger.warning("⚠ No steering vector found!")
+            logger.warning("  Steering is enabled but no vector is loaded.")
+            logger.warning("  Run: python scripts/compute_steering.py --num-examples 200")
+            logger.warning("  Steering will have no effect until vector is computed.")
     
     return pipeline
 

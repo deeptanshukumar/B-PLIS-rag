@@ -425,6 +425,34 @@ class RAGPipeline:
         
         logger.info(f"Interventions loaded from {path}")
     
+    def load_steering_vector(self, checkpoint_path: str) -> None:
+        """
+        Load a pre-computed steering vector.
+        
+        Args:
+            checkpoint_path: Path to steering vector checkpoint (.pt file).
+        """
+        if self.steerer is None:
+            raise RuntimeError("Steering not enabled. Initialize with use_steering=True")
+        
+        import os
+        if not os.path.exists(checkpoint_path):
+            raise FileNotFoundError(f"Steering checkpoint not found: {checkpoint_path}")
+        
+        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        
+        if 'steering_vector' in checkpoint:
+            steering_vector = checkpoint['steering_vector'].to(self.device)
+            self.steerer.set_steering_vector(steering_vector)
+            
+            logger.info(f"✓ Loaded steering vector from {checkpoint_path}")
+            logger.info(f"  Layer: {checkpoint.get('layer', 'unknown')}")
+            logger.info(f"  Component: {checkpoint.get('component', 'unknown')}")
+            logger.info(f"  Norm: {steering_vector.norm().item():.4f}")
+            logger.info(f"  Examples used: {checkpoint.get('num_examples', 'unknown')}")
+        else:
+            raise ValueError(f"No steering_vector found in {checkpoint_path}")
+    
     def load_reft_checkpoint(self, checkpoint_path: str) -> None:
         """
         Load ReFT checkpoint trained with scripts/train_reft.py.
