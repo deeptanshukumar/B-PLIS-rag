@@ -99,7 +99,14 @@ def parse_args() -> argparse.Namespace:
         "--layer",
         type=int,
         default=6,
-        help="Layer to apply steering (default: 6)",
+        help="Layer to apply steering (default: 6, used in single mode)",
+    )
+    
+    parser.add_argument(
+        "--layers",
+        type=int,
+        nargs="+",
+        help="Multiple layers for dynamic steering (e.g., --layers 4 5 6)",
     )
     
     parser.add_argument(
@@ -115,6 +122,14 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         default=True,
         help="Normalize steering vector",
+    )
+    
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["single", "dynamic"],
+        default="single",
+        help="Steering mode: single-layer or dynamic multi-layer",
     )
     
     # Output options
@@ -241,24 +256,31 @@ def compute_steering_vector(
     component: str,
     normalize: bool,
     device: torch.device,
-) -> torch.Tensor:
+    layers: Optional[List[int]] = None,
+    mode: str = "single",
+) -> tuple:
     """
-    Compute steering vector from examples.
+    Compute steering vector(s) from examples.
     
     Args:
         model: T5 model.
         tokenizer: Tokenizer.
         examples: List of dicts with 'query' and 'context'.
-        layer: Target layer.
+        layer: Default target layer (for single mode).
         component: Model component ('encoder' or 'decoder').
         normalize: Whether to normalize vector.
         device: Device for computation.
+        layers: List of layers for multi-layer mode.
+        mode: "single" or "dynamic".
         
     Returns:
-        Computed steering vector.
+        Tuple of (steering_vector or dict, steerer object).
     """
-    logger.info(f"Computing steering vector from {len(examples)} examples")
-    logger.info(f"Target: {component} layer {layer}")
+    if mode == "dynamic" and layers:
+        logger.info(f"Computing steering vectors for {len(layers)} layers: {layers}")
+    else:
+        logger.info(f"Computing steering vector from {len(examples)} examples")
+        logger.info(f"Target: {component} layer {layer}")
     
     # Initialize activation steering
     steerer = ActivationSteering(
@@ -267,6 +289,8 @@ def compute_steering_vector(
         layer=layer,
         component=component,
         device=device,
+        steering_mode=mode,
+        layer_range=(min(layers), max(layers)) if layers else (3, 7),
     )
     
     # Build prompt pairs
@@ -287,20 +311,36 @@ def compute_steering_vector(
             f"Question: {query}\n\nAnswer:"
         )
     
-    # Compute steering vector
-    steering_vector = steerer.compute_steering_vector(
-        positive_prompts=positive_prompts,
-        negative_prompts=negative_prompts,
-        normalize=normalize,
-    )
-    
-    logger.info(f"Steering vector computed successfully")
-    logger.info(f"  Shape: {steering_vector.shape}")
-    logger.info(f"  Norm: {steering_vector.norm().item():.4f}")
-    logger.info(f"  Mean: {steering_vector.mean().item():.6f}")
-    logger.info(f"  Std: {steering_vector.std().item():.6f}")
-    
-    return steering_vector
+    # Compute steering vector(s)
+    if mode == "dynamic" and layers:
+        # Multi-layer computation
+        steering_vectors = steerer.compute_steering_vectors(
+            positive_prompts=positive_prompts,
+            negative_prompts=negative_prompts,
+            layers=layers,
+            normalize=normalize,
+        )
+        
+        logger.info(f"Steering vectors computed successfully for {len(steering_vectors)} layers")
+        for layer_idx, vec in steering_vectors.items():
+            logger.info(f"  Layer {layer_idx}: norm={vec.norm().item():.4f}")
+        
+        return steering_vectors, steerer
+    else:
+        # Single-layer computation
+        steering_vector = steerer.compute_steering_vector(
+            positive_prompts=positive_prompts,
+            negative_prompts=negative_prompts,
+            normalize=normalize,
+        )
+        
+        logger.info(f"Steering vector computed successfully")
+        logger.info(f"  Shape: {steering_vector.shape}")
+        logger.info(f"  Norm: {steering_vector.norm().item():.4f}")
+        logger.info(f"  Mean: {steering_vector.mean().item():.6f}")
+        logger.info(f"  Std: {steering_vector.std().item():.6f}")
+        
+        return steering_vector, steerer
 
 
 def main():
@@ -357,8 +397,11 @@ def main():
     
     logger.info(f"Using {len(examples)} examples for steering computation")
     
-    # Compute steering vector
-    steering_vector = compute_steering_vector(
+    # Determine layers to compute
+    compute_layers = args.layers if args.layers else None
+    
+    # Compute steering vector(s)
+    result, steerer = compute_steering_vector(
         model=model,
         tokenizer=tokenizer,
         examples=examples,
@@ -366,38 +409,57 @@ def main():
         component=args.component,
         normalize=args.normalize,
         device=device,
+        layers=compute_layers,
+        mode=args.mode,
     )
     
-    # Save steering vector
+    # Save steering vector(s)
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
-    torch.save(
-        {
-            'steering_vector': steering_vector.cpu(),
-            'layer': args.layer,
-            'component': args.component,
-            'normalized': args.normalize,
-            'model_name': args.model,
-            'num_examples': len(examples),
-        },
-        output_path,
-    )
-    logger.info(f"Saved steering vector to {output_path}")
+    # Save using steerer's save method (supports both single and multi-layer)
+    steerer.save(str(output_path))
+    logger.info(f"Saved steering vector(s) to {output_path}")
     
     # Save metadata
     metadata_path = Path(args.metadata) if args.metadata else output_path.with_suffix('.json')
-    metadata = {
-        'model_name': args.model,
-        'layer': args.layer,
-        'component': args.component,
-        'num_examples': len(examples),
-        'normalized': args.normalize,
-        'vector_norm': steering_vector.norm().item(),
-        'vector_mean': steering_vector.mean().item(),
-        'vector_std': steering_vector.std().item(),
-        'dataset': args.dataset,
-        'corpus_types': args.corpus if args.dataset == "legalbench" else None,
+    
+    # Build metadata
+    if args.mode == "dynamic" and args.layers:
+        # Multi-layer metadata
+        metadata = {
+            'model_name': args.model,
+            'mode': args.mode,
+            'layers': args.layers,
+            'component': args.component,
+            'num_examples': len(examples),
+            'normalized': args.normalize,
+            'dataset': args.dataset,
+            'corpus_types': args.corpus if args.dataset == "legalbench" else None,
+            'layer_vectors': {
+                str(layer): {
+                    'norm': result[layer].norm().item(),
+                    'mean': result[layer].mean().item(),
+                    'std': result[layer].std().item(),
+                }
+                for layer in result
+            }
+        }
+    else:
+        # Single-layer metadata
+        metadata = {
+            'model_name': args.model,
+            'mode': args.mode,
+            'layer': args.layer,
+            'component': args.component,
+            'num_examples': len(examples),
+            'normalized': args.normalize,
+            'vector_norm': result.norm().item(),
+            'vector_mean': result.mean().item(),
+            'vector_std': result.std().item(),
+            'dataset': args.dataset,
+            'corpus_types': args.corpus if args.dataset == "legalbench" else None,
+        }
     }
     
     with open(metadata_path, 'w', encoding='utf-8') as f:
@@ -408,9 +470,16 @@ def main():
     
     # Print usage instructions
     print("\n" + "="*60)
-    print("STEERING VECTOR COMPUTED SUCCESSFULLY!")
-    print("="*60)
-    print(f"\nSteering vector saved to: {output_path}")
+    if args.mode == "dynamic" and args.layers:
+        print("MULTI-LAYER STEERING VECTORS COMPUTED SUCCESSFULLY!")
+        print("="*60)
+        print(f"\nSteering vectors saved to: {output_path}")
+        print(f"Layers: {args.layers}")
+    else:
+        print("STEERING VECTOR COMPUTED SUCCESSFULLY!")
+        print("="*60)
+        print(f"\nSteering vector saved to: {output_path}")
+        print(f"Layer: {args.layer}")
     print(f"Metadata saved to: {metadata_path}")
     print(f"\nTo use this steering vector:")
     print(f"  python main.py --query '...' --steering-checkpoint {output_path}")

@@ -163,12 +163,26 @@ class RAGPipeline:
         self.steerer: Optional[ActivationSteering] = None
         
         if use_steering:
-            logger.info(f"Initializing activation steering (layer={steering_layer})")
+            # Get dynamic steering config from global config if available
+            global_config = get_config()
+            steering_config = global_config.steering
+            
+            # Determine steering mode and layer range
+            steering_mode = getattr(steering_config, 'steering_mode', 'single')
+            layer_range = getattr(steering_config, 'steering_layer_range', (3, 7))
+            max_steps = getattr(steering_config, 'steering_max_steps', 60)
+            layer_mults = getattr(steering_config, 'layer_multipliers', None)
+            
+            logger.info(f"Initializing activation steering (mode={steering_mode}, layer={steering_layer})")
             self.steerer = ActivationSteering(
                 self.model,
                 self.tokenizer,
                 layer=steering_layer,
                 device=self.device,
+                steering_mode=steering_mode,
+                layer_range=layer_range,
+                max_steering_steps=max_steps,
+                layer_multipliers=layer_mults,
             )
         
         # Configuration
@@ -285,13 +299,24 @@ class RAGPipeline:
             max_length=1024,  # Increased from 512 to allow more context
         ).to(self.device)
         
+        # Prepare runtime state for dynamic steering
+        # Compute retrieval confidence: use max score and score margin
+        runtime_state = {}
+        if scores:
+            runtime_state["retrieval_score"] = max(scores)  # Top score as confidence
+            if len(scores) > 1:
+                runtime_state["retrieval_margin"] = scores[0] - scores[1]  # Gap to 2nd result
+        
         # Generate with optional steering
         try:
             if self.use_reft and self.reft_hook:
                 self.reft_hook.register()
             
-            if self.use_steering and self.steerer and self.steerer.steering_vector is not None:
-                self.steerer.apply_manual(self.steering_multiplier)
+            # Apply steering with runtime state for dynamic layer selection
+            if self.use_steering and self.steerer:
+                has_vectors = (self.steerer.steering_vector is not None) or len(self.steerer.steering_vectors) > 0
+                if has_vectors:
+                    self.steerer.apply_manual(self.steering_multiplier, runtime_state)
             
             # Generate with greedy decoding for extractive QA
             outputs = self.model.generate(

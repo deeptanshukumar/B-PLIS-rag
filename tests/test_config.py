@@ -11,7 +11,7 @@ from src.config import (
     Config,
     PathsConfig,
     ReFTConfig,
-    RetrievalConfig,
+    RetrieverConfig,  # Changed from RetrievalConfig
     SteeringConfig,
     get_config,
     setup_environment,
@@ -24,9 +24,10 @@ class TestPathsConfig:
     def test_default_paths(self) -> None:
         """Test that default paths are set correctly."""
         paths = PathsConfig()
-        assert paths.data_dir == Path("data")
-        assert paths.checkpoint_dir == Path("checkpoints")
-        assert paths.cache_dir == Path(".cache")
+        # Paths are absolute, starting from PROJECT_ROOT
+        assert paths.data_dir.name == "data"
+        assert paths.checkpoints_dir.name == "checkpoints"
+        assert paths.cache_dir.name == ".cache"
 
     def test_path_conversion(self) -> None:
         """Test string to Path conversion."""
@@ -66,32 +67,31 @@ class TestSteeringConfig:
     def test_default_values(self) -> None:
         """Test default steering configuration."""
         config = SteeringConfig()
-        assert config.steering_layer == 6
-        assert config.steering_multiplier == 2.0
-        assert config.normalize_vector is True
+        assert config.steering_layer == 13
+        assert config.multiplier == 2.0
+        assert config.steering_mode == "single"
 
     def test_custom_values(self) -> None:
         """Test custom steering configuration."""
         config = SteeringConfig(
             steering_layer=10,
-            steering_multiplier=1.5,
-            normalize_vector=False,
+            multiplier=1.5,
+            steering_mode="dynamic",
         )
         assert config.steering_layer == 10
-        assert config.steering_multiplier == 1.5
-        assert config.normalize_vector is False
+        assert config.multiplier == 1.5
+        assert config.steering_mode == "dynamic"
 
 
-class TestRetrievalConfig:
-    """Tests for RetrievalConfig."""
+class TestRetrieverConfig:
+    """Tests for RetrieverConfig."""
 
     def test_default_values(self) -> None:
-        """Test default retrieval configuration."""
-        config = RetrievalConfig()
+        """Test default retriever configuration."""
+        config = RetrieverConfig()
         assert config.embedding_model == "all-MiniLM-L6-v2"
+        assert config.index_type == "IndexFlatL2"
         assert config.top_k == 5
-        assert config.chunk_size == 512
-        assert config.chunk_overlap == 64
 
 
 class TestConfig:
@@ -100,11 +100,11 @@ class TestConfig:
     def test_default_config(self) -> None:
         """Test default configuration."""
         config = Config()
-        assert config.model_name == "t5-base"
-        assert config.device == "auto"
-        assert config.seed == 42
-        assert config.use_reft is True
-        assert config.use_steering is True
+        assert config.model.name == "t5-base"
+        assert config.settings.seed == 42
+        # Check nested configs exist
+        assert config.steering is not None
+        assert config.reft is not None
 
     def test_nested_configs(self) -> None:
         """Test nested configuration objects."""
@@ -112,20 +112,24 @@ class TestConfig:
         assert isinstance(config.paths, PathsConfig)
         assert isinstance(config.reft, ReFTConfig)
         assert isinstance(config.steering, SteeringConfig)
-        assert isinstance(config.retrieval, RetrievalConfig)
+        assert isinstance(config.retriever, RetrieverConfig)
 
     def test_config_from_toml(self) -> None:
         """Test loading config from TOML file."""
         toml_content = """
-[main]
-model_name = "google/flan-t5-base"
+[model]
+name = "google/flan-t5-base"
+max_length = 1024
+
+[settings]
 seed = 123
 
 [reft]
 intervention_dim = 32
 
 [steering]
-steering_multiplier = 1.5
+steering_layer = 8
+multiplier = 1.5
 """
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".toml", delete=False
@@ -134,10 +138,12 @@ steering_multiplier = 1.5
             f.flush()
 
             config = Config.from_toml(Path(f.name))
-            assert config.model_name == "google/flan-t5-base"
-            assert config.seed == 123
+            assert config.model.name == "google/flan-t5-base"
+            assert config.model.max_length == 1024
+            assert config.settings.seed == 123
             assert config.reft.intervention_dim == 32
-            assert config.steering.steering_multiplier == 1.5
+            assert config.steering.steering_layer == 8
+            assert config.steering.multiplier == 1.5
 
     def test_get_config_singleton(self) -> None:
         """Test get_config returns singleton."""
@@ -156,14 +162,17 @@ class TestSetupEnvironment:
         import numpy as np
         import torch
 
-        setup_environment(seed=42)
+        config = Config()
+        config.settings.seed = 42
+        setup_environment(config)
 
         # Test reproducibility
         random_val1 = random.random()
         np_val1 = np.random.random()
         torch_val1 = torch.rand(1).item()
 
-        setup_environment(seed=42)
+        config.settings.seed = 42
+        setup_environment(config)
 
         random_val2 = random.random()
         np_val2 = np.random.random()

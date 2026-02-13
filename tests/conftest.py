@@ -5,9 +5,19 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 from typing import Generator
+import sys
 
 import pytest
-import torch
+
+# Import torch - handle potential docstring issue
+try:
+    import torch
+except RuntimeError:
+    # If torch is already loaded, get it from sys.modules
+    if 'torch' in sys.modules:
+        torch = sys.modules['torch']
+    else:
+        raise
 
 
 @pytest.fixture(scope="session")

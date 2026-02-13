@@ -88,6 +88,11 @@ class SteeringConfig(BaseModel):
     """Activation steering configuration."""
     steering_layer: int = 13
     multiplier: float = 2.0
+    # Dynamic steering parameters
+    steering_mode: str = "single"  # "single" or "dynamic"
+    steering_layer_range: tuple = (3, 7)  # Valid range for dynamic selection
+    steering_max_steps: int = 60  # Max generation steps to apply steering
+    layer_multipliers: dict = {}  # Per-layer multipliers, e.g., {4: 2.0, 5: 1.5}
 
 
 class BilingualConfig(BaseModel):
