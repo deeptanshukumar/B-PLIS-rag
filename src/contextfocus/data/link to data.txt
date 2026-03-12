@@ -1,0 +1,5 @@
+the 3 data files here were too big for github (>25mb) hence here is the link to the dataset on kaggle!
+
+https://www.kaggle.com/datasets/deeptanshukumar/bplis-data
+
+download them to use offline or use in colab or kaggle.

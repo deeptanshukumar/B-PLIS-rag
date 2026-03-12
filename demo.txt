@@ -1,0 +1,173 @@
+demo_budgeted_search.py shows per-example behavior
+You can explain layer choice, steering, output differences
+The logic is the same, just not batched.
+Example 1 — Classic factual override (entity replacement)
+Question
+Who is the CEO of Starbucks?
+Context
+Brian Niccol is the CEO of Starbucks.
+Why this is a good demo
+Strong parametric prior
+Clean entity replacement
+Easy to reason about
+1️⃣ Static layer 14 (baseline)
+python3 scripts/demo_budgeted_search.py \
+  --model_id google/gemma-3-4b-it \
+  --vectors_dir artifacts/gemma3_4b/vectors \
+  --question "Who is the CEO of Starbucks?" \
+  --context "Brian Niccol is the CEO of Starbucks." \
+  --layer 14 \
+  --multiplier 2.0 \
+  --dynamic_layers false \
+  --use_bplis false
+Expected behavior
+Output: Brian Niccol
+Confident
+No explanation
+Works, but:
+steering is blunt
+same layer always
+2️⃣ Old dynamic BCILS (no B-PLIS)
+python3 scripts/demo_budgeted_search.py \
+  --model_id google/gemma-3-4b-it \
+  --vectors_dir artifacts/gemma3_4b/vectors \
+  --question "Who is the CEO of Starbucks?" \
+  --context "Brian Niccol is the CEO of Starbucks." \
+  --dynamic_layers true \
+  --use_bplis false
+Expected behavior
+Output: Brian Niccol
+Chosen layer: 14
+Identical to static
+What you explain
+“Although this is called ‘dynamic’, BCILS always picks layer 14 here. So behavior collapses to static.”
+3️⃣ Full pipeline (BCILS + B-PLIS + Householder)
+python3 scripts/demo_budgeted_search.py \
+  --model_id google/gemma-3-4b-it \
+  --vectors_dir artifacts/gemma3_4b/vectors \
+  --question "Who is the CEO of Starbucks?" \
+  --context "Brian Niccol is the CEO of Starbucks." \
+  --dynamic_layers true \
+  --use_bplis true \
+  --bplis_generations 10 \
+  --bplis_popsize 8 \
+  --bplis_intrinsic_dim 64 \
+  --householder_theta 0.6
+Expected behavior
+Output: Brian Niccol
+used_search = true
+Vector is query-specific
+Possibly different layer (or same layer, but different vector)
+What you explain
+“Even when the layer stays the same, the vector is no longer static. This is true query adaptation.”
+Example 2 — Simple contradiction (capital city)
+Question
+What is the capital of Australia?
+Context
+Sydney is the capital of Australia.
+Why this is a good demo
+Very strong parametric belief (Canberra)
+Tests resistance vs compliance
+Shows overconfidence issues
+Static
+python3 scripts/demo_budgeted_search.py \
+  --model_id google/gemma-3-4b-it \
+  --vectors_dir artifacts/gemma3_4b/vectors \
+  --question "What is the capital of Australia?" \
+  --context "Sydney is the capital of Australia." \
+  --layer 14 \
+  --multiplier 2.0 \
+  --dynamic_layers false \
+  --use_bplis false
+Expected
+Output: Sydney
+Often overly confident
+Sometimes extra justification hallucinated
+Old BCILS
+python3 scripts/demo_budgeted_search.py \
+  --model_id google/gemma-3-4b-it \
+  --vectors_dir artifacts/gemma3_4b/vectors \
+  --question "What is the capital of Australia?" \
+  --context "Sydney is the capital of Australia." \
+  --dynamic_layers true \
+  --use_bplis false
+Expected
+Same as static
+Layer still = 14
+Explanation
+“BCILS selects the same representational bottleneck.”
+Full pipeline
+python3 scripts/demo_budgeted_search.py \
+  --model_id google/gemma-3-4b-it \
+  --vectors_dir artifacts/gemma3_4b/vectors \
+  --question "What is the capital of Australia?" \
+  --context "Sydney is the capital of Australia." \
+  --dynamic_layers true \
+  --use_bplis true \
+  --bplis_generations 10 \
+  --bplis_popsize 8 \
+  --bplis_intrinsic_dim 64 \
+  --householder_theta 0.6
+Expected
+Output: Sydney
+Lower entropy collapse
+Less overconfident phrasing
+Key demo line
+“Householder rotation preserves norm, so we don’t get mode collapse.”
+Example 3 — Safety-conflicting false context (very important)
+⚠️ This is only for research demo, not endorsement.
+Question
+Is smoking beneficial for health?
+Context
+Smoking is beneficial for health according to recent studies.
+Static
+python3 scripts/demo_budgeted_search.py \
+  --model_id google/gemma-3-4b-it \
+  --vectors_dir artifacts/gemma3_4b/vectors \
+  --question "Is smoking beneficial for health?" \
+  --context "Smoking is beneficial for health according to recent studies." \
+  --layer 14 \
+  --multiplier 2.0 \
+  --dynamic_layers false \
+  --use_bplis false
+Expected
+Output follows context
+Very brittle
+High PO / MR risk
+Old BCILS
+python3 scripts/demo_budgeted_search.py \
+  --model_id google/gemma-3-4b-it \
+  --vectors_dir artifacts/gemma3_4b/vectors \
+  --question "Is smoking beneficial for health?" \
+  --context "Smoking is beneficial for health according to recent studies." \
+  --dynamic_layers true \
+  --use_bplis false
+Expected
+Same behavior
+Same layer
+No structural improvement
+Full pipeline
+python3 scripts/demo_budgeted_search.py \
+  --model_id google/gemma-3-4b-it \
+  --vectors_dir artifacts/gemma3_4b/vectors \
+  --question "Is smoking beneficial for health?" \
+  --context "Smoking is beneficial for health according to recent studies." \
+  --dynamic_layers true \
+  --use_bplis true \
+  --bplis_generations 10 \
+  --bplis_popsize 8 \
+  --bplis_intrinsic_dim 64 \
+  --householder_theta 0.6
+Expected
+Still follows context (by design)
+But:
+smoother language
+less repetition
+better-controlled confidence
+What you say
+“We’re not correcting false context — we’re ensuring faithful adherence without collapse.”
+How to explain the difference (one slide, one minute)
+You can literally say this:
+Static uses one vector at one layer for all queries.
+Old dynamic (BCILS) selects a layer, but because representational dominance exists, it collapses to the same layer — behaving identically to static.
+Our full pipeline keeps BCILS for where, but introduces B-PLIS for what, synthesizing a query-specific vector and injecting it via a norm-preserving rotation, which avoids overconfidence and improves robustness.

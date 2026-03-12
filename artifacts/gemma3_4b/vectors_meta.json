@@ -1,0 +1,10 @@
+{
+  "method": "ContextFocus vcomb",
+  "model_id": "google/gemma-3-4b-it",
+  "n_layers": 34,
+  "n_examples": 1501,
+  "system_variants_used": 20,
+  "max_length": 1024,
+  "used_chat_template": true,
+  "note": "Vectors are saved as float32 CPU tensors, one per transformer block index."
+}
